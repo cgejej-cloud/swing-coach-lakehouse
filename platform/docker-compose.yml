@@ -1,0 +1,143 @@
+# Swing Coach platform (all open source), sized for a 7.8 GB WSL VM.
+#   App DB (Postgres, logical replication) -> Debezium -> Kafka -> stream consumer -> Iceberg
+#   SeaweedFS (S3) + Iceberg tables via Lakekeeper REST catalog (Postgres-backed) + Trino SQL
+# Start: docker compose --env-file .env up -d      Trino: :8080  Kafka (host): :9094  Connect: :8083
+name: swingcoach
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    # wal_level=logical lets Debezium read the app tables' changes from the WAL.
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=4", "-c", "max_wal_senders=4"]
+    environment:
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: lakekeeper
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d lakekeeper"]
+      interval: 5s
+      retries: 20
+    mem_limit: 512m
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json -master.volumeSizeLimitMB=1024 -volume.max=0
+    ports: ["8333:8333"]
+    volumes:
+      - swdata:/data
+      - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+    mem_limit: 1g  # measured ~710 MB after loading 1.4M pose rows
+
+  lakekeeper-migrate:
+    image: quay.io/lakekeeper/catalog:latest
+    command: ["migrate"]
+    environment: &lk-env
+      LAKEKEEPER__PG_DATABASE_URL_READ: postgresql://${PG_USER}:${PG_PASSWORD}@postgres:5432/lakekeeper
+      LAKEKEEPER__PG_DATABASE_URL_WRITE: postgresql://${PG_USER}:${PG_PASSWORD}@postgres:5432/lakekeeper
+      LAKEKEEPER__PG_ENCRYPTION_KEY: ${LAKEKEEPER_ENCRYPTION_KEY}
+      LAKEKEEPER__AUTHZ_BACKEND: allowall
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+
+  lakekeeper:
+    image: quay.io/lakekeeper/catalog:latest
+    command: ["serve"]
+    environment: *lk-env
+    ports: ["8181:8181"]
+    depends_on:
+      lakekeeper-migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "/home/nonroot/lakekeeper", "healthcheck"]
+      interval: 5s
+      retries: 30
+    mem_limit: 256m
+
+  trino:
+    image: trinodb/trino:latest
+    ports: ["8080:8080"]
+    volumes:
+      - ./trino/catalog:/etc/trino/catalog:ro
+      - ./trino/jvm.config:/etc/trino/jvm.config:ro
+      - ./trino/config.properties:/etc/trino/config.properties:ro
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    depends_on:
+      lakekeeper: {condition: service_healthy}
+    mem_limit: 3g
+
+  kafka:
+    image: apache/kafka:latest
+    ports: ["9094:9094"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
+      # Containers use kafka:9092; the Windows-side stream consumer uses localhost:9094.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: -Xmx512m -Xms256m
+    volumes: [kafkadata:/var/lib/kafka/data]
+    mem_limit: 900m
+
+  connect:
+    image: quay.io/debezium/connect:latest
+    ports: ["8083:8083"]
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: swingcoach-connect
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      HEAP_OPTS: -Xmx512m -Xms256m
+    depends_on:
+      kafka: {condition: service_started}
+      postgres: {condition: service_healthy}
+    mem_limit: 1g  # measured ~770 MB with one Postgres connector
+
+  airflow:
+    build: ./airflow
+    image: swingcoach-airflow:local
+    command: standalone
+    ports: ["8090:8080"]
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${PG_USER}:${PG_PASSWORD}@postgres:5432/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/swingcoach/orchestration/dags
+      AIRFLOW__CORE__PARALLELISM: "2"
+      # Local single-user dev only (bound to localhost): no login screen.
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+      # The pipeline inside the container talks to services by their compose names.
+      S3_ENDPOINT: http://seaweedfs:8333
+      TRINO_HOST: trino
+      TRINO_PORT: "8080"
+      SWINGCOACH_DB: postgresql://${PG_USER}:${PG_PASSWORD}@postgres:5432/swingcoach
+    volumes:
+      - ..:/opt/swingcoach
+    depends_on:
+      postgres: {condition: service_healthy}
+      trino: {condition: service_started}
+    mem_limit: 1536m
+
+volumes:
+  pgdata:
+  swdata:
+  kafkadata:

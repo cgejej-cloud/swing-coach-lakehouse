@@ -1,0 +1,9 @@
+{
+  "name": "스윙 코치",
+  "short_name": "스윙 코치",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f3",
+  "theme_color": "#14532d",
+  "icons": []
+}

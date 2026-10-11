@@ -1,0 +1,13 @@
+# Trino on the local platform. TRINO_HOST/TRINO_PORT let Airflow (inside Docker) use trino:8080.
+swingcoach:
+  target: dev
+  outputs:
+    dev:
+      type: trino
+      method: none
+      user: dbt
+      host: "{{ env_var('TRINO_HOST', 'localhost') }}"
+      port: "{{ env_var('TRINO_PORT', '8080') | int }}"
+      database: lakehouse
+      schema: gold
+      threads: 2

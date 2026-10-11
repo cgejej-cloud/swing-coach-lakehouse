@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+nasmo/
+data/
+models/
+label/
+platform/.env
+platform/seaweedfs/s3.json
+# Screenshots with people in them stay local.
+docs/screenshots/feed_*.jpg
+.pytest_cache/
+docs/portfolio/resume_bullets.md
+dbt/target/
+dbt/logs/
+logs/

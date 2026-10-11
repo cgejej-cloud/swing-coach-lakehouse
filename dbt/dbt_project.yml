@@ -1,0 +1,15 @@
+name: swingcoach
+version: "1.0.0"
+profile: swingcoach
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  swingcoach:
+    gold:
+      +materialized: table   # Iceberg table via Trino, replaced on each build
+      +tags: ["gold"]

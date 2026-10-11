@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>스윙 구간 라벨링</title>
+<style>
+  :root { --bg:#f6f7f9; --fg:#1d2330; --muted:#667085; --card:#fff; --line:#d9dde5; --accent:#2f6fed; --ok:#1f9d55; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14171c; --fg:#e7eaf0; --muted:#98a2b3; --card:#1d2129; --line:#2f3542; --accent:#6c9bff; --ok:#4ccf86; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 system-ui, "Malgun Gothic", sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width: 980px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .muted { color: var(--muted); }
+  .card { background: var(--card); border:1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 12px; }
+  video { width: 100%; max-height: 62vh; background:#000; border-radius: 8px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px; }
+  button { font: inherit; padding: 6px 12px; border-radius: 8px; border:1px solid var(--line); background: var(--card); color: var(--fg); cursor:pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color:#fff; }
+  .ev { min-width: 150px; }
+  .ev.set { border-color: var(--ok); }
+  .ev b { font-variant-numeric: tabular-nums; }
+  kbd { border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 5px; font-size:12px; }
+  #frame { font-variant-numeric: tabular-nums; font-weight:600; }
+  table { border-collapse: collapse; width:100%; font-variant-numeric: tabular-nums; }
+  td, th { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align:left; }
+</style>
+</head>
+<body>
+<main>
+  <h1>스윙 구간 라벨링</h1>
+  <div class="muted">P1 테이크어웨이 시작 · P4 탑 · P7 임팩트 · P10 피니시. 예측값이 미리 채워져 있으니 틀린 것만 고치세요. 저장은 이 브라우저에 자동으로 됩니다.</div>
+
+  <div class="card">
+    <div class="row"><b id="title"></b><span class="muted" id="progress"></span></div>
+    <video id="v" preload="auto" muted playsinline></video>
+    <div class="row">
+      <button id="prev10">« 10</button><button id="prev1">‹ 1</button>
+      <span>frame <span id="frame">0</span></span>
+      <button id="next1">1 ›</button><button id="next10">10 »</button>
+      <span class="muted"><kbd>←</kbd><kbd>→</kbd> 1프레임 · <kbd>Shift</kbd>+화살표 10프레임 · <kbd>1</kbd>~<kbd>4</kbd> 현재 프레임 지정</span>
+    </div>
+    <div class="row" id="events"></div>
+    <div class="row">
+      <button id="back">이전 영상</button>
+      <button class="primary" id="next">확인 · 다음 영상</button>
+      <button id="export">CSV 내보내기</button>
+    </div>
+  </div>
+
+  <div class="card"><table id="summary"></table></div>
+</main>
+<script>
+const ITEMS = /*ITEMS*/[];
+const EVENTS = ["P1", "P4", "P7", "P10"];
+const FLIGHT = {0: "알 수 없음", 1: "스트레이트", 2: "슬라이스", 3: "훅"};
+const KEY = "swing-labels-v1";
+let labels = {};
+try { labels = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(labels)); } catch (e) {} };
+
+const v = document.getElementById("v");
+let idx = Math.max(0, ITEMS.findIndex(it => !(labels[it.seq] && labels[it.seq].done)));
+if (idx < 0) idx = 0;
+
+const item = () => ITEMS[idx];
+const cur = () => labels[item().seq] || (labels[item().seq] = { ...item().pred, done: false });
+const frameNow = () => Math.round(v.currentTime * item().fps);
+const seek = f => { v.currentTime = (Math.max(0, f) + 0.5) / item().fps; };
+
+function render() {
+  const it = item();
+  document.getElementById("title").textContent = `${it.club} · ${FLIGHT[it.flight]} · #${it.seq}`;
+  const done = ITEMS.filter(x => labels[x.seq] && labels[x.seq].done).length;
+  document.getElementById("progress").textContent = `${idx + 1} / ${ITEMS.length} (완료 ${done})`;
+  const box = document.getElementById("events");
+  box.innerHTML = "";
+  EVENTS.forEach((e, i) => {
+    const b = document.createElement("button");
+    const changed = cur()[e] !== it.pred[e];
+    b.className = "ev" + (changed ? " set" : "");
+    b.innerHTML = `${i + 1}. ${e} <b>${cur()[e]}</b>${changed ? " (수정)" : ""}`;
+    b.title = "클릭: 이 프레임으로 이동 · 길게 누르거나 숫자키: 현재 프레임으로 지정";
+    b.onclick = () => seek(cur()[e]);
+    box.appendChild(b);
+  });
+  renderSummary();
+}
+
+function renderSummary() {
+  const rows = ITEMS.map(it => {
+    const l = labels[it.seq];
+    const cells = EVENTS.map(e => l ? `${l[e]}${l[e] !== it.pred[e] ? "*" : ""}` : "");
+    return `<tr><td>${it.seq}</td><td>${it.club}</td><td>${FLIGHT[it.flight]}</td>${cells.map(c => `<td>${c}</td>`).join("")}<td>${l && l.done ? "✓" : ""}</td></tr>`;
+  });
+  document.getElementById("summary").innerHTML =
+    `<tr><th>seq</th><th>club</th><th>구질</th>${EVENTS.map(e => `<th>${e}</th>`).join("")}<th>완료</th></tr>` + rows.join("");
+}
+
+function load() {
+  v.src = item().src;
+  v.onloadeddata = () => { seek(cur().P4); };
+  render();
+}
+
+v.addEventListener("timeupdate", () => { document.getElementById("frame").textContent = frameNow(); });
+v.addEventListener("seeked", () => { document.getElementById("frame").textContent = frameNow(); });
+const step = n => () => { v.pause(); seek(frameNow() + n); };
+document.getElementById("prev10").onclick = step(-10);
+document.getElementById("prev1").onclick = step(-1);
+document.getElementById("next1").onclick = step(1);
+document.getElementById("next10").onclick = step(10);
+document.getElementById("next").onclick = () => { cur().done = true; save(); if (idx < ITEMS.length - 1) { idx++; load(); } else render(); };
+document.getElementById("back").onclick = () => { if (idx > 0) { idx--; load(); } };
+document.getElementById("export").onclick = () => {
+  const head = "nasmo_seq,club,ball_flight_code," + EVENTS.map(e => `${e}_label,${e}_pred`).join(",") + ",done";
+  const lines = ITEMS.map(it => {
+    const l = labels[it.seq] || {};
+    return [it.seq, it.club, it.flight, ...EVENTS.flatMap(e => [l[e] ?? "", it.pred[e]]), l.done ? 1 : 0].join(",");
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([head + "\n" + lines.join("\n") + "\n"], { type: "text/csv" }));
+  a.download = "phase_labels.csv";
+  a.click();
+};
+document.addEventListener("keydown", ev => {
+  if (ev.key === "ArrowLeft") { ev.preventDefault(); step(ev.shiftKey ? -10 : -1)(); }
+  if (ev.key === "ArrowRight") { ev.preventDefault(); step(ev.shiftKey ? 10 : 1)(); }
+  if (ev.key === " ") { ev.preventDefault(); v.paused ? v.play() : v.pause(); }
+  const n = Number(ev.key);
+  if (n >= 1 && n <= 4) { cur()[EVENTS[n - 1]] = frameNow(); save(); render(); }
+});
+load();
+</script>
+</body>
+</html>

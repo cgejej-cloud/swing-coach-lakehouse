@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14532d">
+<link rel="manifest" href="/static/manifest.json">
+<title>스윙 코치</title>
+<style>
+  :root {
+    --bg: #f4f6f3; --fg: #18211b; --muted: #5f6b63; --card: #ffffff; --line: #dfe5df;
+    --accent: #1f7a45; --accent-fg: #ffffff; --good: #1f7a45; --fix: #c2410c; --chip: #eef3ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111613; --fg: #e6ece7; --muted: #9aa69e; --card: #1a211c; --line: #2b352e;
+            --accent: #3fb46f; --accent-fg: #0b130e; --good: #5fd08c; --fix: #fb923c; --chip: #223027; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.55 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line);
+           padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
+  .btn { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--fg);
+         border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+  main { max-width: 760px; margin: 0 auto; padding: 8px 16px 48px; }
+  .session { margin-top: 20px; }
+  .session h2 { font-size: 14px; color: var(--muted); font-weight: 600; margin: 0 0 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-bottom: 14px; }
+  .card img { display: block; width: 100%; height: auto; background: #000; }
+  .body { padding: 12px 14px 14px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+  .chip { background: var(--chip); border-radius: 999px; padding: 1px 9px; }
+  .good { color: var(--good); margin-top: 8px; }
+  .fix { color: var(--fix); font-weight: 600; margin-top: 4px; }
+  .cue { margin-top: 4px; }
+  .extra { margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .actions .btn { font-size: 13px; padding: 5px 12px; }
+  .pending { padding: 18px 14px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  tr.hl-fix td { color: var(--fix); font-weight: 600; }
+  tr.hl-good td { color: var(--good); }
+  .legend { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+  .empty { text-align: center; color: var(--muted); padding: 48px 0; }
+  #more { display: block; margin: 16px auto; }
+  input[type=file] { display: none; }
+  nav.tabs { display: flex; gap: 4px; max-width: 760px; margin: 0 auto; padding: 8px 16px 0; }
+  nav.tabs button { font: inherit; border: 0; background: none; color: var(--muted); padding: 8px 12px;
+                    border-bottom: 2px solid transparent; cursor: pointer; }
+  nav.tabs button.on { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+  #progress { max-width: 760px; margin: 8px auto 0; padding: 0 16px; font-size: 13px; color: var(--muted); }
+  #progress .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  #progress .bar > div { height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 14px; }
+  .panel h3 { margin: 0 0 8px; font-size: 15px; }
+  .finding { border-left: 3px solid var(--fix); padding: 4px 10px; margin: 8px 0; }
+  .finding small { color: var(--muted); display: block; }
+  .bars .row { display: grid; grid-template-columns: 120px 1fr 44px; gap: 8px; align-items: center; font-size: 13px; margin: 4px 0; }
+  .bars .track { background: var(--chip); border-radius: 4px; height: 12px; }
+  .bars .fill { background: var(--accent); height: 100%; border-radius: 4px; }
+  svg.chart { width: 100%; height: auto; display: block; }
+  svg.chart text { fill: var(--muted); font-size: 11px; }
+  .muted { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>스윙 코치</h1>
+  <label class="btn primary" for="files">영상 업로드</label>
+  <input id="files" type="file" accept="video/*" multiple>
+</header>
+<nav class="tabs"><button data-tab="feed" class="on">피드</button><button data-tab="insights">누적 분석</button></nav>
+<div id="progress" hidden><span id="progress-text"></span><div class="bar"><div id="progress-bar"></div></div></div>
+<main id="tab-feed">
+  <p class="legend">초록 = 내 스윙 · 흰색 반투명 = 기준 스윙 · 노란 점선 = 어드레스 때 머리·골반 위치 · 빨간 원 = 고칠 곳</p>
+  <div id="feed"></div>
+  <button class="btn" id="more" hidden>이전 라운드 더 보기</button>
+</main>
+<main id="tab-insights" hidden><div id="insights"><div class="empty">불러오는 중…</div></div></main>
+<script>
+const feedEl = document.getElementById("feed");
+let nextBefore = null;
+const pending = new Set();
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+function cardHtml(c) {
+  if (c.status !== "done") {
+    if (c.status !== "failed") pending.add(c.video_id);
+    const msg = c.status === "failed" ? `분석 실패: ${esc(c.error)}` : "분석 중이에요…";
+    return `<article class="card" id="v${c.video_id}"><div class="pending">#${c.seq_no} · ${msg}</div></article>`;
+  }
+  const chips = [`#${c.seq_no}`, c.title, c.club_predicted ? "클럽 자동 판별" : null,
+                 c.club_uncertain ? "클럽 판별 보류" : null,
+                 c.confidence && c.confidence !== "-" ? `분석 신뢰도 ${c.confidence}` : null,
+                 c.is_reference ? "⭐ 기준 스윙" : null].filter(Boolean);
+  return `<article class="card" id="v${c.video_id}">
+    ${c.image ? `<img loading="lazy" src="${c.image}" alt="스윙 키프레임 P1 P4 P7 P10">` : ""}
+    <div class="body">
+      <div class="meta">${chips.map(t => `<span class="chip">${esc(t)}</span>`).join("")}</div>
+      ${c.good ? `<div class="good">${esc(c.good)}</div>` : ""}
+      ${c.fix ? `<div class="fix">${esc(c.fix)}</div>` : ""}
+      ${c.cue ? `<div class="cue">${esc(c.cue)}</div>` : ""}
+      ${c.extra.map(e => `<div class="extra">${esc(e)}</div>`).join("")}
+      <div class="actions">
+        <button class="btn" data-detail="${c.video_id}">근거 보기</button>
+        ${c.is_reference ? "" : `<button class="btn" data-ref="${c.video_id}">베스트로 지정</button>`}
+      </div>
+      <div class="detail" id="d${c.video_id}" hidden></div>
+    </div></article>`;
+}
+
+function sessionHtml(s) {
+  return `<section class="session"><h2>${esc(s.label)} · ${s.cards.length}샷</h2>${s.cards.map(cardHtml).join("")}</section>`;
+}
+
+async function loadFeed(append) {
+  const url = "/api/feed" + (append && nextBefore ? `?before=${encodeURIComponent(nextBefore)}` : "");
+  const data = await (await fetch(url)).json();
+  const html = data.sessions.map(sessionHtml).join("");
+  feedEl.innerHTML = append ? feedEl.innerHTML + html : (html || `<div class="empty">아직 영상이 없어요. 오른쪽 위에서 업로드하세요.</div>`);
+  nextBefore = data.next_before;
+  document.getElementById("more").hidden = data.sessions.length < 10;
+}
+
+feedEl.addEventListener("click", async ev => {
+  const d = ev.target.dataset;
+  if (d.detail) {
+    const box = document.getElementById("d" + d.detail);
+    if (!box.hidden) { box.hidden = true; return; }
+    const r = await (await fetch(`/api/cards/${d.detail}`)).json();
+    box.innerHTML = `<table><tr><th>구간</th><th>지표</th><th>이번</th><th>평소 좋은 샷</th><th>차이(z)</th></tr>` +
+      r.metrics.map(m => `<tr class="${m.is_fix ? "hl-fix" : m.is_good ? "hl-good" : ""}"><td>${esc(m.phase)}</td><td>${esc(m.name)}</td>` +
+        `<td>${m.value.toFixed(2)}</td><td>${m.good_median.toFixed(2)}</td><td>${m.z.toFixed(1)}</td></tr>`).join("") +
+      `</table><p class="legend">정면 영상으로 측정 불가: ${r.not_measurable.join(", ")}</p>`;
+    box.hidden = false;
+  }
+  if (d.ref) {
+    const res = await fetch("/api/reference", {method: "POST", headers: {"Content-Type": "application/json"},
+                                               body: JSON.stringify({video_id: Number(d.ref)})});
+    if (res.ok) loadFeed(false); else alert((await res.json()).detail);
+  }
+});
+
+// --- resumable upload: 1 MB chunks, retry with backoff, resume from the server's offset ---
+const CHUNK = 1024 * 1024;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const progressEl = document.getElementById("progress");
+function progress(text, frac) {
+  progressEl.hidden = frac === null;
+  document.getElementById("progress-text").textContent = text;
+  document.getElementById("progress-bar").style.width = `${Math.round((frac || 0) * 100)}%`;
+}
+
+async function uploadOne(file, batch, index, total, sentBefore, grandTotal) {
+  const init = await (await fetch("/api/resumable", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({filename: file.name, size: file.size, batch, index})})).json();
+  let offset = init.offset, attempt = 0;
+  while (offset < file.size) {
+    try {
+      const res = await fetch(`/api/resumable/${init.upload_id}?offset=${offset}`, {
+        method: "PATCH", headers: {"Content-Type": "application/octet-stream"},
+        body: file.slice(offset, offset + CHUNK)});
+      const body = await res.json();
+      if (res.status === 409 || res.ok) { offset = body.offset; attempt = 0; }
+      else throw new Error(res.status);
+      if (body.done) return body;
+    } catch (e) {
+      if (++attempt > 6) throw e;
+      progress(`연결이 끊겨 다시 시도하는 중… (${attempt}/6)`, (sentBefore + offset) / grandTotal);
+      await sleep(500 * 2 ** attempt);
+      offset = (await (await fetch(`/api/resumable/${init.upload_id}`)).json()).offset;
+    }
+    progress(`${index + 1}/${total} 업로드 중 · ${file.name}`, (sentBefore + offset) / grandTotal);
+  }
+}
+
+document.getElementById("files").addEventListener("change", async ev => {
+  const files = [...ev.target.files].sort((a, b) => a.lastModified - b.lastModified || a.name.localeCompare(b.name));
+  ev.target.value = "";
+  if (!files.length) return;
+  const batch = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+  const grandTotal = files.reduce((s, f) => s + f.size, 0);
+  let sent = 0, dup = 0;
+  try {
+    for (const [i, f] of files.entries()) {
+      const r = await uploadOne(f, batch, i, files.length, sent, grandTotal);
+      if (r && r.duplicate) dup++;
+      sent += f.size;
+    }
+    progress(`업로드 완료 ${files.length}개${dup ? ` (중복 ${dup}개는 기존 카드 사용)` : ""} · 분석 중…`, 1);
+    setTimeout(() => progress("", null), 4000);
+  } catch (e) {
+    progress(`업로드 실패: 네트워크를 확인하고 같은 파일을 다시 선택하면 이어서 올라가요`, sent / grandTotal);
+  }
+  loadFeed(false);
+});
+
+// --- tabs & cumulative analysis ---
+document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("on", x === b));
+  document.getElementById("tab-feed").hidden = b.dataset.tab !== "feed";
+  document.getElementById("tab-insights").hidden = b.dataset.tab !== "insights";
+  if (b.dataset.tab === "insights") loadInsights();
+}));
+
+const GROUP = {driver: "드라이버", iron: "아이언"};
+const pct = v => v == null ? "-" : `${Math.round(v * 100)}%`;
+
+function lineChart(trend, key, label, fmt) {
+  const groups = ["driver", "iron"], colors = {driver: "var(--accent)", iron: "var(--fix)"};
+  const months = [...new Set(trend.map(t => t.month.slice(0, 7)))].sort();
+  const vals = trend.map(t => t[key]).filter(v => v != null);
+  if (!months.length || !vals.length) return "";
+  const lo = Math.min(...vals), hi = Math.max(...vals), W = 640, H = 180, P = 32;
+  const x = i => P + (months.length < 2 ? 0 : i * (W - 2 * P) / (months.length - 1));
+  const y = v => H - P - (hi === lo ? 0.5 : (v - lo) / (hi - lo)) * (H - 2 * P);
+  const lines = groups.map(g => {
+    const pts = trend.filter(t => t.club_group === g && t[key] != null)
+      .map(t => `${x(months.indexOf(t.month.slice(0, 7)))},${y(t[key])}`);
+    return pts.length ? `<polyline fill="none" stroke="${colors[g]}" stroke-width="2.5" points="${pts.join(" ")}"/>` +
+      pts.map(p => `<circle cx="${p.split(",")[0]}" cy="${p.split(",")[1]}" r="3" fill="${colors[g]}"/>`).join("") : "";
+  }).join("");
+  const xl = months.map((m, i) => (i % Math.ceil(months.length / 6) === 0) ?
+    `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${m.slice(2)}</text>` : "").join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">
+    <text x="${P}" y="14">${esc(label)} (${fmt(hi)} ~ ${fmt(lo)})</text>${lines}${xl}</svg>
+    <p class="legend"><span style="color:var(--accent)">●</span> 드라이버 · <span style="color:var(--fix)">●</span> 아이언</p>`;
+}
+
+async function loadInsights() {
+  const box = document.getElementById("insights");
+  const d = await (await fetch("/api/insights")).json();
+  const findings = d.findings.length ? d.findings.map(f => `<div class="finding">${esc(f.text)}
+      <small>휜 샷 ${f.n_curve}개 vs 스트레이트 ${f.n_straight}개 · p=${f.p} · 연습 포인트: "${esc(f.cue)}"</small></div>`).join("")
+    : `<p class="muted">아직 뚜렷한 차이가 보이는 지표가 없어요.</p>`;
+  let lake = `<div class="panel"><h3>레이크하우스</h3><p class="muted">연결되지 않았어요 (${esc(d.error)}). WSL에서 docker compose up 후 다시 열어 주세요.</p></div>`;
+  if (d.lakehouse_available) {
+    const bars = g => d.fixes.filter(f => f.club_group === g).slice(0, 6).map(f =>
+      `<div class="row"><span>${esc(f.name)}</span><div class="track"><div class="fill" style="width:${pct(f.share)}"></div></div><span>${f.cards}</span></div>`).join("");
+    const rounds = d.rounds.map(r => `<tr><td>${esc(r.session_label)}</td><td>${GROUP[r.club_group]}</td><td>${r.shots}</td>
+      <td>${pct(r.straight_rate)}</td><td>${r.avg_carry_m ? Math.round(r.avg_carry_m) + "m" : "-"}</td></tr>`).join("");
+    const run = d.last_run ? `마지막 동기화 ${esc(d.last_run.finished_at.slice(0, 16))} · ${d.last_run.status === "succeeded" ? "성공" : "실패"} · 품질 검사 실패 ${d.last_run.dq_failed}건` : "동기화 기록 없음";
+    lake = `<div class="panel"><h3>월별 추이</h3>${lineChart(d.trend, "straight_rate", "스트레이트 비율", pct)}
+        ${lineChart(d.trend, "median_pelvis_sway_top_sw", "백스윙 골반 이동 (0에 가까울수록 제자리)", v => v.toFixed(2))}</div>
+      <div class="panel"><h3>자주 나온 지적</h3><p class="muted">드라이버</p><div class="bars">${bars("driver")}</div>
+        <p class="muted">아이언</p><div class="bars">${bars("iron")}</div></div>
+      <div class="panel"><h3>최근 라운드</h3><table><tr><th>라운드</th><th>클럽</th><th>샷</th><th>스트레이트</th><th>평균 캐리</th></tr>${rounds}</table></div>
+      <div class="panel"><h3>데이터</h3><p class="muted">${run}${d.sync.running ? " · 지금 동기화 중…" : ""}</p>
+        <button class="btn" id="sync">지금 동기화</button></div>`;
+  }
+  box.innerHTML = `<div class="panel"><h3>내 샷에서 찾은 패턴</h3>${findings}</div>${lake}`;
+  const s = document.getElementById("sync");
+  if (s) s.onclick = async () => { await fetch("/api/sync", {method: "POST"}); s.textContent = "동기화 시작됨"; s.disabled = true; };
+}
+document.getElementById("more").addEventListener("click", () => loadFeed(true));
+
+setInterval(async () => {
+  if (!pending.size) return;
+  for (const id of [...pending]) {
+    const s = await (await fetch(`/api/videos/${id}/status`)).json();
+    if (s.status === "done" || s.status === "failed") { pending.delete(id); loadFeed(false); break; }
+  }
+}, 3000);
+loadFeed(false);
+</script>
+</body>
+</html>
