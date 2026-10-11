@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from swing_coach import baseline, engine  # noqa: E402
 from swing_coach.coach import BY_KEY  # noqa: E402
-from swing_coach.phases import PhaseDetectionError  # noqa: E402
+from swing_coach.phases import NotFullSwing, PhaseDetectionError  # noqa: E402
 from swing_coach.store import Store, default_store  # noqa: E402
 
 FLIGHT_KO = {1: "스트레이트", 2: "슬라이스", 3: "훅"}
@@ -54,6 +54,9 @@ def main() -> None:
     for v in videos:
         try:
             engine.compute_swing(store, v)
+        except NotFullSwing:
+            engine.note_not_full_swing(store, v)
+            failed[v["id"]] = "not a full swing (putt/chip)"
         except PhaseDetectionError as e:
             failed[v["id"]] = str(e)
             store.finish(v["id"], "failed", str(e))
@@ -82,7 +85,7 @@ def write_report(store: Store, ctx, failed: dict) -> None:
               f"- 기준선: 자세 특징 {len(baseline.CLUB_FEATURES)}개 로지스틱 회귀, 5-fold 정확도 {posture_acc:.1%} (n={n})",
               f"- 사용 모델: `{bundle.get('kind', '-')}` (MobileNetV3 사전학습 임베딩 + 자세 특징), "
               f"5-fold 정확도 **{bundle.get('accuracy_cv', float('nan')):.1%}** (n={bundle.get('n', '-')}) — scripts/train_club.py",
-              f"- 확신도 {engine.CLUB_MIN_CONFIDENCE} 미만은 판정 보류: 교차검증에서 샷 91%를 정확도 94.8%로 판별", ""]
+              f"- 확신도 {engine.CLUB_MIN_CONFIDENCE} 미만은 판정 보류: 교차검증에서 샷 93%를 정확도 95.5%로 판별", ""]
 
     lines += ["## 기준 스윙", ""]
     for g, vid in ctx.refs.items():

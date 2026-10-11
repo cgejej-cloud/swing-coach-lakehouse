@@ -9,10 +9,10 @@ import numpy as np
 import pandas as pd
 
 from swing_coach import baseline
-from swing_coach.club import address_crop, embed
+from swing_coach.club import address_crop, address_embedding, embed
 from swing_coach.coach import BY_KEY, Card, make_card
 from swing_coach.metrics import compute, fix_sides
-from swing_coach.phases import detect
+from swing_coach.phases import NotFullSwing, detect
 from swing_coach.pose import extract
 from swing_coach.render import render_card
 from swing_coach.store import Store
@@ -91,8 +91,9 @@ def build_context(store: Store) -> Context:
 
 
 CLUB_MODEL = ROOT / "models" / "club_clf.joblib"
-# Below this the club is left unknown: on cross-validation, 91% of shots clear it with
-# 94.8% accuracy, versus 91.1% accuracy when every shot is forced to a label.
+# Below this the club is left unknown: on cross-validation (3-frame address embedding +
+# posture), 93% of shots clear it with 95.5% accuracy, versus 93.5% when every shot is
+# forced to a label. Picked among 7 variants on the same folds, so slightly optimistic.
 CLUB_MIN_CONFIDENCE = 0.8
 
 
@@ -106,7 +107,10 @@ def assign_club(store: Store, v, ctx: Context) -> str | None:
         return None
     row = ctx.hist.set_index("video_id").loc[v["id"]]
     pose = load_pose(v)
-    emb = embed(address_crop(Path(v["path"]), pose, int(row["p1"])))
+    if ctx.club_model.get("address_features") == "avg3":
+        emb = address_embedding(Path(v["path"]), pose, int(row["p1"]))
+    else:
+        emb = embed(address_crop(Path(v["path"]), pose, int(row["p1"])))
     x = np.concatenate([emb, row[ctx.club_model["posture_features"]].to_numpy(dtype=float)]).reshape(1, -1)
     p_driver = float(ctx.club_model["model"].predict_proba(x)[0, 1])
     group, conf = ("driver", p_driver) if p_driver >= 0.5 else ("iron", 1 - p_driver)
@@ -161,8 +165,20 @@ def make_card_for(store: Store, v, ctx: Context) -> None:
     store.save_card(v["id"], card, _rel(out))
 
 
+def note_not_full_swing(store: Store, v) -> None:
+    """Putts and chips are valid uploads, not failures: say so on the card."""
+    card = Card(good="풀스윙이 아닌 샷(퍼팅·어프로치)이라 자세 분석은 하지 않았어요", fix=None, cue=None,
+                confidence="-")
+    store.save_card(v["id"], card, None)
+    store.finish(v["id"], "done")
+
+
 def process(store: Store, v) -> None:
     """Full pipeline for one queued video (used by the upload worker)."""
-    compute_swing(store, v)
+    try:
+        compute_swing(store, v)
+    except NotFullSwing:
+        note_not_full_swing(store, v)
+        return
     ctx = build_context(store)
     make_card_for(store, v, ctx)

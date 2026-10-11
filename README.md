@@ -45,15 +45,17 @@ flowchart LR
 | 장애 복구 | 레이크 커밋 후 오프셋 커밋 전 종료 → 재전달 1건, 변경 0건 | E2E `tests/e2e_stream_recovery.py` |
 | 스트림 vs 배치 대조 | 앱 테이블 4개 차이 0건 | `pipeline/run.py` (Airflow 야간) |
 | 구간 감지 | 탑 평균 오차 1.7프레임(60fps, ±3 이내 93%), 임팩트 2.1, 시작 2.9 | 정답 30개 `scripts/eval_phases.py` |
-| 클럽 판별 | 91.1%, 확신도 ≥0.8만 판정 시 샷 91%를 94.8% | 5-fold 층화 CV `scripts/train_club.py` |
+| 클럽 판별 | 93.5%, 확신도 ≥0.8만 판정 시 샷 93%를 95.5% | 5-fold 층화 CV `scripts/train_club.py` |
+| 피니시 지표 | 검출 프레임 오차의 영향 0.79 → 0.22 어깨너비 (피니시 0.3초 구간 중앙값) | 정답 30개 |
+| 구간 감지 실패 | 193개 중 2개 (+ 퍼팅·어프로치 3개는 "풀스윙 아님" 카드) | `scripts/build_feed.py` 리포트 |
 | 구질 연관 | 드라이버 슬라이스 ↔ 백스윙 골반 밀림 (효과 크기 −1.1, p=0.004) 외 4개 | Mann-Whitney U |
 | 데이터 품질 | 파이프라인 검사 23개 + dbt 테스트 19개 (gold) / 10개 (원천) | `lakehouse.ops.dq_results`, `dbt build` |
-| 단위 테스트 | 13 / 13 | `pytest` |
+| 단위 테스트 | 15 / 15 | `pytest` |
 
 ## 설계 판단 (ADR)
 
 - **[001 데스크탑 위 레이크하우스](docs/adr/001-lakehouse-on-desktop.md)** — 수정일시 증분 대신 행 내용 해시 + MERGE. 값만 바뀐 행을 정확히 잡고 Iceberg 스냅샷으로 이전 값 조회.
-- **[002 클럽 판별](docs/adr/002-club-classifier.md)** — 자세 특징 82.7% → 사전학습 이미지 임베딩 결합 91.1%. 확신도 낮으면 판정 보류.
+- **[002 클럽 판별](docs/adr/002-club-classifier.md)** — 자세 특징 82.7% → 사전학습 이미지 임베딩 결합 91.1% → 어드레스 3프레임 평균 93.5%. 확신도 낮으면 판정 보류.
 - **[003 착지 구역 타입 계약](docs/adr/003-landing-data-contract.md)** — NULL 때문에 바뀐 타입으로 MERGE가 깨진 사건 → 열 타입 고정 + 드리프트 시 silver 재구축.
 - **[004 CDC 스트림 · dbt · Airflow](docs/adr/004-cdc-stream-dbt-airflow.md)** — 배치와 같은 변환 코드를 쓰는 직접 만든 소비자, 레이크 커밋 후 오프셋 커밋, 배치는 야간 대조로 역할 변경.
 - 측정할 수 없는 것은 말하지 않는다 — 정면 카메라에서 왜곡되는 탑 왼팔 각도는 지표에서 제외, 신뢰도 낮은 스윙은 지적 생략.

@@ -61,10 +61,40 @@ class PhaseDetectionError(ValueError):
     pass
 
 
+class NotFullSwing(PhaseDetectionError):
+    """Putts, chips, practice waggles: hands never rise far above address."""
+
+
 def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
     """Inclusive (start, end) index pairs of True runs."""
     edges = np.diff(np.concatenate([[0], mask.astype(int), [0]]))
     return list(zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1) - 1))
+
+
+def _swing_segments(y: np.ndarray, address_y: float, amplitude: float, min_len: int,
+                    frac: float, relative_merge: bool) -> list[tuple[int, int]]:
+    """Runs of "hands well above address" (backswing, follow-through, ...).
+
+    Occlusion at the top can split the backswing into pieces, so shallow dips between
+    runs are merged. Default rule: a real impact dip brings the hands most of the way
+    back to address height. Relative rule (fallback): the dip must come down at least
+    15% of the swing height below the lower of the two neighbouring peaks.
+    """
+    threshold = address_y - max(0.08, frac * amplitude)
+    high = [r for r in _runs(y < threshold) if r[1] - r[0] >= min_len]
+    merged = high[:1]
+    for seg in high[1:]:
+        dip = float(y[merged[-1][1]: seg[0] + 1].max())
+        if relative_merge:
+            peaks = max(float(y[merged[-1][0]: merged[-1][1] + 1].min()), float(y[seg[0]: seg[1] + 1].min()))
+            shallow = dip - peaks < 0.15 * amplitude
+        else:
+            shallow = dip < address_y - 0.3 * amplitude
+        if shallow:
+            merged[-1] = (merged[-1][0], seg[1])
+        else:
+            merged.append(seg)
+    return merged
 
 
 def detect(pose: pd.DataFrame, fps: float, n_frames: int) -> Phases:
@@ -79,17 +109,14 @@ def detect(pose: pd.DataFrame, fps: float, n_frames: int) -> Phases:
     # "Well above address": scaled to the swing's height range because the golfer's
     # size in the frame differs between venues (camera distance).
     amplitude = address_y - float(y.min())
-    threshold = address_y - max(0.08, 0.45 * amplitude)
-    high = [r for r in _runs(y < threshold) if r[1] - r[0] >= min_len]
-    # Occlusion at the top can split the backswing into pieces; a real impact dip
-    # brings the hands most of the way back to address height, so merge shallower dips.
-    merged = high[:1]
-    for seg in high[1:]:
-        dip = float(y[merged[-1][1]: seg[0] + 1].max())
-        if dip < address_y - 0.3 * amplitude:
-            merged[-1] = (merged[-1][0], seg[1])
-        else:
-            merged.append(seg)
+    if amplitude < 0.15:
+        raise NotFullSwing(f"hands barely move (range {amplitude:.2f}): not a full swing")
+    merged = _swing_segments(y, address_y, amplitude, min_len, frac=0.45, relative_merge=False)
+    fallback = len(merged) < 2
+    if fallback:
+        # Fallback for camera setups where the top sits well below the finish or the hands
+        # stay high through impact: lower threshold, merge only dips that stay near both peaks.
+        merged = _swing_segments(y, address_y, amplitude, min_len, frac=0.3, relative_merge=True)
     if len(merged) < 2:
         raise PhaseDetectionError(f"expected backswing and follow-through, found {len(merged)} high segment(s)")
     back, through = merged[0], merged[1]
@@ -104,13 +131,18 @@ def detect(pose: pd.DataFrame, fps: float, n_frames: int) -> Phases:
     while p1 > 0 and not (still[p1] and abs(y[p1] - address_y) < 0.015):
         p1 -= 1
 
+    if fallback and not (0.4 <= (p4 - p1) / fps <= 2.0 and 0.12 <= (p7 - p4) / fps <= 0.6):
+        # A fallback that yields an impossible swing is worse than no answer.
+        raise PhaseDetectionError("fallback segmentation gave implausible timing")
     confidence = _confidence(hands.vis.to_numpy(), p1, p4, p7, fps)
     return Phases(int(p1), int(p4), int(p7), int(p10), fps, confidence)
 
 
 # Tuned against 30 hand-labelled clips (scripts/tune_phases.py, label/phase_labels.csv):
-# top MAE 5.7 -> 1.7 frames at 60 fps. The finish barely moved with FINISH_BAND (MAE ~9
-# frames); the held finish pose changes little over those frames, so it is left as is.
+# top MAE 5.7 -> 1.7 frames at 60 fps. The finish stays ~8 frames off (a stillness rule
+# only reached 7.3; "where the hands stop" is ambiguous even in the labels), so finish
+# metrics are measured over the held finish instead (metrics.finish_pose), which cut the
+# finish-metric error against labelled frames from 0.79 to 0.22 shoulder widths.
 TOP_SMOOTH_S = 0.35
 TOP_BAND = 0.06     # fraction of swing height: latest frame this close to the highest point
 FINISH_BAND = 0.02

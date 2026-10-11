@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from swing_coach.phases import PhaseDetectionError, detect
+from swing_coach.phases import NotFullSwing, PhaseDetectionError, detect
 
 FPS = 60.0
 
@@ -44,3 +44,23 @@ def test_split_backswing_from_occlusion_is_merged():
 def test_no_swing_raises():
     with pytest.raises(PhaseDetectionError):
         detect(synthetic_pose(np.full(241, 0.52)), FPS, 241)
+
+
+def test_putt_is_not_a_full_swing():
+    """A putting stroke moves the hands a few percent of the frame: a card, not a failure."""
+    y = np.full(241, 0.52)
+    y[60:110] = 0.52 - 0.05 * np.sin(np.linspace(0, np.pi, 50))
+    with pytest.raises(NotFullSwing):
+        detect(synthetic_pose(y), FPS, 241)
+
+
+def test_low_top_swing_recovered_by_fallback():
+    """Top well below the finish (camera setup): the default threshold misses the
+    backswing, the fallback still finds a plausible swing."""
+    y = np.full(241, 0.55)
+    y[50:101] = np.linspace(0.55, 0.42, 51)          # short-looking backswing
+    y[100:117] = np.linspace(0.42, 0.55, 17)
+    y[116:136] = np.linspace(0.55, 0.20, 20)         # high finish
+    y[135:] = 0.20
+    ph = detect(synthetic_pose(y), FPS, 241)
+    assert abs(ph.p7 - 116) <= 3 and ph.p4 < ph.p7

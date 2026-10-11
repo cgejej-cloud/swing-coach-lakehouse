@@ -11,7 +11,7 @@ import pandas as pd
 
 from swing_coach.phases import Phases
 
-FEATURE_VERSION = "v0.1"
+FEATURE_VERSION = "v0.2"  # v0.2: median address window, finish measured over the held finish
 
 NOSE, L_SH, R_SH, L_EL, R_EL, L_WR, R_WR = 0, 11, 12, 13, 14, 15, 16
 L_HIP, R_HIP, L_KNEE, R_KNEE, L_ANK, R_ANK = 23, 24, 25, 26, 27, 28
@@ -37,6 +37,22 @@ def address_pose(pose: pd.DataFrame, p1: int) -> dict[int, np.ndarray]:
     win = pose[(pose.frame >= p1 - ADDRESS_WINDOW) & (pose.frame <= p1)]
     if win.empty:
         return _frame_xy(pose, p1)
+    med = win.groupby("lm")[["x", "y"]].median()
+    return {int(k): r.to_numpy() for k, r in med.iterrows()}
+
+
+FINISH_WINDOW_S = 0.3
+
+
+def finish_pose(pose: pd.DataFrame, p10: int, fps: float) -> dict[int, np.ndarray]:
+    """Median landmark positions over the held finish (P10 .. P10 + 0.3 s).
+
+    The exact frame where the hands "stop" is ambiguous (detector vs 30 hand labels:
+    MAE ~8 frames, and the labels themselves are +-5); the held pose is what matters.
+    """
+    win = pose[(pose.frame >= p10) & (pose.frame <= p10 + int(FINISH_WINDOW_S * fps))]
+    if win.empty:
+        return _frame_xy(pose, p10)
     med = win.groupby("lm")[["x", "y"]].median()
     return {int(k): r.to_numpy() for k, r in med.iterrows()}
 
@@ -75,7 +91,7 @@ def compute(pose: pd.DataFrame, ph: Phases) -> dict[str, float]:
     a = address_pose(pose, ph.p1)
     top = _frame_xy(pose, ph.p4)
     imp = _frame_xy(pose, ph.p7)
-    fin = _frame_xy(pose, ph.p10)
+    fin = finish_pose(pose, ph.p10, ph.fps)
 
     sw = abs(a[L_SH][0] - a[R_SH][0])
     hip_a = _mid(a, L_HIP, R_HIP)

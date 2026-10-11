@@ -61,6 +61,35 @@ def top_crop(video: Path, pose: pd.DataFrame, p4: int) -> np.ndarray:
     raise ValueError(f"frame {p4} not found in {video}")
 
 
+ADDRESS_OFFSETS = (5, 15, 25)  # frames before takeaway (~0.1-0.4 s at 60 fps)
+
+
+def address_embedding(video: Path, pose: pd.DataFrame, p1: int) -> np.ndarray:
+    """Mean embedding of the ball region over several address frames.
+
+    A single frame can be blurred or briefly blocked by the club head; averaging the
+    still address window is steadier.
+    """
+    info = probe(video)
+    a = {k: v * np.array([info.width, info.height]) for k, v in address_pose(pose, p1).items()}
+    sw = abs(a[L_SH][0] - a[R_SH][0])
+    cx = (a[L_ANK][0] + a[R_ANK][0]) / 2
+    foot_y = max(a[L_ANK][1], a[R_ANK][1])
+    x0, x1 = int(cx - 1.6 * sw), int(cx + 1.6 * sw)
+    y0, y1 = int(foot_y - 0.2 * sw), int(foot_y + 3.0 * sw)
+    targets = {max(0, p1 - o) for o in ADDRESS_OFFSETS}
+    pad = int(4 * sw)
+    embs = []
+    for i, rgb in enumerate(frames(video, info)):
+        if i in targets:
+            padded = cv2.copyMakeBorder(rgb, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+            crop = padded[y0 + pad: y1 + pad, x0 + pad: x1 + pad]
+            embs.append(embed(cv2.resize(crop, (224, 224), interpolation=cv2.INTER_AREA)))
+        if len(embs) == len(targets):
+            break
+    return np.mean(embs, axis=0)
+
+
 def address_patch(video: Path, pose: pd.DataFrame, p1: int) -> np.ndarray:
     """Grayscale patch (PATCH_H x PATCH_W) between and below the feet at address, standardised."""
     return _crop(video, pose, p1, gray=True)
