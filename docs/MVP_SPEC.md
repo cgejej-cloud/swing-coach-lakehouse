@@ -15,10 +15,11 @@
 | 구질 연관 분석 | ✅ | 드라이버 슬라이스 ↔ 백스윙 골반 밀림 p=0.004 등 5개 |
 | 누적 분석 화면 | ✅ | 레이크하우스 gold 마트(월별 추이·지적 빈도·라운드 요약) + 패턴 |
 | 레이크하우스 (SeaweedFS·Iceberg·Lakekeeper·Trino) | ✅ | 행 해시 MERGE, 멱등, 품질 검사 23개, 업로드 후 자동 동기화 — ADR 001, 003 |
-| 앱 DB Postgres | ⏸ | SQLite 유지(단일 사용자). 다중 사용자 단계에서 전환 |
-| Airflow, dbt | ⏸ | `pipeline/run.py` 순차 실행 + 실행 로그 테이블로 대체 (WSL 7GB) |
+| 앱 DB Postgres | ✅ | 2026-10-11 이전, 작업 큐 `SKIP LOCKED`. SQLite는 테스트용 |
+| CDC 스트림 (Debezium·Kafka) | ✅ | 앱 변경 → Iceberg 2.5~4.8초, 장애 복구 검증 — ADR 004 |
+| dbt, Airflow | ✅ | gold 4개 + 테스트 19개, 야간 DAG(대조·원천 테스트·Iceberg 유지보수) |
 | LLM 문장 다듬기, text-to-SQL | ⏸ | 확장 단계 |
-| 테스트 | ✅ | 단위 13개(`pytest`), 이어 올리기 E2E(`tests/e2e_resumable_upload.py`) |
+| 테스트 | ✅ | 단위 13개(`pytest`), E2E 3개(이어 올리기, CDC, 스트림 장애 복구) |
 
 ---
 

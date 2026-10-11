@@ -21,11 +21,13 @@ TABLES = ["videos", "swings", "cards", "reference"]  # parent first (foreign key
 
 
 def ensure_database() -> None:
+    """App DB plus Airflow's metadata DB, both on the platform Postgres."""
     admin = URL.rsplit("/", 1)[0] + "/lakekeeper"
     with psycopg.connect(admin, autocommit=True) as c:
-        if not c.execute("SELECT 1 FROM pg_database WHERE datname = 'swingcoach'").fetchone():
-            c.execute("CREATE DATABASE swingcoach")
-            print("created database swingcoach")
+        for db in ("swingcoach", "airflow"):
+            if not c.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db,)).fetchone():
+                c.execute(f"CREATE DATABASE {db}")
+                print(f"created database {db}")
 
 
 def main() -> None:
