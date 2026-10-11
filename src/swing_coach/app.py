@@ -163,6 +163,29 @@ def get_insights():
             "sync": {"running": sync.running, "last": sync.last}}
 
 
+class Question(BaseModel):
+    q: str
+
+
+@app.post("/api/ask")
+def ask_data(body: Question):
+    """Natural-language question over the lakehouse (local LLM -> guarded read-only SQL)."""
+    from swing_coach import ask, llm  # langgraph is only needed for this endpoint
+
+    q = body.q.strip()
+    if not q or len(q) > 200:
+        raise HTTPException(400, "질문은 1~200자로 입력해 주세요.")
+    if not llm.available():
+        raise HTTPException(503, "로컬 LLM(Ollama)이 실행 중이 아니에요.")
+    try:
+        state = ask.ask(q)
+    except Exception as e:  # noqa: BLE001 - lakehouse is optional for the app
+        raise HTTPException(503, f"레이크하우스에 연결하지 못했어요 ({type(e).__name__}).") from e
+    rows = json.loads(json.dumps(state.get("rows", [])[:20], default=str))
+    return {"answer": state.get("answer", ""), "sql": state.get("sql", ""), "columns": state.get("columns", []),
+            "rows": rows, "trace": state.get("trace", [])}
+
+
 @app.post("/api/sync")
 def start_sync():
     return {"started": sync.start(), "running": sync.running}
@@ -222,8 +245,10 @@ def card_detail(video_id: int):
         raise HTTPException(404)
     ev = json.loads(r["evidence_json"] or "{}")
     rows = [{"key": k, "name": BY_KEY[k].name, "phase": BY_KEY[k].phase, **v,
-             "is_fix": k == r["fix_key"], "is_good": k == r["good_key"]} for k, v in ev.items()]
-    return {"metrics": rows, "not_measurable": ["스윙 플레인", "클럽 궤도·페이스", "척추각 유지"]}
+             "is_fix": k == r["fix_key"], "is_good": k == r["good_key"]}
+            for k, v in ev.items() if k in BY_KEY]  # "_llm" etc. are notes, not metrics
+    return {"metrics": rows, "not_measurable": ["스윙 플레인", "클럽 궤도·페이스", "척추각 유지"],
+            "wording": ev.get("_llm", "rules")}
 
 
 class RefIn(BaseModel):

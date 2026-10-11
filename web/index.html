@@ -64,6 +64,10 @@
   svg.chart { width: 100%; height: auto; display: block; }
   svg.chart text { fill: var(--muted); font-size: 11px; }
   .muted { color: var(--muted); font-size: 13px; }
+  .ask { display: flex; gap: 8px; }
+  .ask input { flex: 1; min-width: 0; font: inherit; padding: 7px 12px; border: 1px solid var(--line);
+               border-radius: 999px; background: var(--bg); color: var(--fg); }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -252,7 +256,21 @@ async function loadInsights() {
       <div class="panel"><h3>데이터</h3><p class="muted">${run}${d.sync.running ? " · 지금 동기화 중…" : ""}</p>
         <button class="btn" id="sync">지금 동기화</button></div>`;
   }
-  box.innerHTML = `<div class="panel"><h3>내 샷에서 찾은 패턴</h3>${findings}</div>${lake}`;
+  const askBox = d.lakehouse_available ? `<div class="panel"><h3>내 데이터에 묻기</h3>
+      <form id="ask" class="ask"><input id="q" maxlength="200" placeholder="예: 드라이버 평균 비거리는?" autocomplete="off">
+      <button class="btn primary">묻기</button></form><div id="ask-out"></div></div>` : "";
+  box.innerHTML = `<div class="panel"><h3>내 샷에서 찾은 패턴</h3>${findings}</div>${askBox}${lake}`;
+  const f = document.getElementById("ask");
+  if (f) f.onsubmit = async ev => {
+    ev.preventDefault();
+    const q = document.getElementById("q").value.trim(), out = document.getElementById("ask-out");
+    if (!q) return;
+    out.innerHTML = `<p class="muted">생각하는 중…</p>`;
+    const r = await fetch("/api/ask", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({q})});
+    const a = await r.json();
+    out.innerHTML = r.ok ? `<p>${esc(a.answer)}</p><details><summary class="muted">실행한 SQL</summary><pre>${esc(a.sql)}</pre></details>`
+      : `<p class="muted">${esc(a.detail || "실패했어요")}</p>`;
+  };
   const s = document.getElementById("sync");
   if (s) s.onclick = async () => { await fetch("/api/sync", {method: "POST"}); s.textContent = "동기화 시작됨"; s.disabled = true; };
 }
