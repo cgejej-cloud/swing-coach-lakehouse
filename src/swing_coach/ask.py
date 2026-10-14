@@ -48,6 +48,22 @@ lakehouse.gold.monthly_trend  -- month(timestamp, 월 첫날), club_group, shots
 lakehouse.gold.fix_frequency  -- club_group, fix_key('(none)' = 지적 없음), cards, share(0~1)
 lakehouse.gold.metric_by_flight  -- club_group, ball_flight_code, metric(지표 키, m_ 없이), n, median, mean
 
+골프존 라운드 기록 (최근 10라운드만 수집됨: 홀별 타수와 홀 안의 모든 샷)
+  전체 라운드 수·라운드별 샷 영상은 fact_video 의 session_key 로 센다. 아래 테이블은 타수·홀·샷 기록이 필요할 때만 쓴다.
+lakehouse.silver.fact_round  -- 라운드 1개 = 1행
+  pg_code(라운드 키), course(골프장), played_at(문자열 'YYYY-MM-DD HH:MM:SS'), par, strokes(총 타수), putts, penalties(벌타),
+  driver_avg_m, driver_max_m
+lakehouse.silver.fact_hole  -- 라운드 x 홀(1~18)
+  pg_code, hole_no, par(3~6), hole_length_m, strokes, putts, penalties, score_to_par(타수-파), tee_lie(티샷이 멈춘 곳),
+  gir(1=규정 타수 안에 그린), fairway_hit(1=페어웨이, 파3는 NULL)
+lakehouse.silver.fact_hole_shot  -- 홀 안의 샷 1개 = 1행
+  pg_code, hole_no, shot_no, start_remain_m(치기 전 남은 거리), distance_m, end_remain_m, lie(멈춘 곳: '페어웨이','러프','그린',
+  '벙커','그린벙커','패널티 에어리어','OB','에이프런','드롭존','프런트티','홀인'), is_penalty_lie(1=OB·패널티), is_relocation(1=벌타 이동, 스윙 아님)
+lakehouse.gold.par_type_summary  -- 라운드 x 파: pg_code, played_at, course, par, holes, avg_strokes, strokes_over_par, penalty_strokes, putts_per_hole, gir_rate, fairway_rate
+lakehouse.gold.shot_outcome_by_distance  -- distance_bucket('000-050','050-100','100-130','130-160','160-190','190-220','220+'),
+  start_lie_group('tee','fairway','rough','bunker','apron','other'), shots, green_rate, penalty_rate(0~1), median_end_remain_m
+lakehouse.gold.driver_dispersion  -- 라운드별 드라이버: pg_code, played_at, drives, mean_x_m(+오른쪽), sd_x_m, fairway_rate, penalty_rate, left_misses, right_misses
+
 규칙: 비율(straight_rate 등)은 구질 라벨이 있는 샷(ball_flight_code IN (1,2,3))만 분모로 쓴다.
 날짜 비교는 shot_at 문자열을 그대로 쓰거나 CAST(substr(shot_at, 1, 19) AS timestamp)를 쓴다."""
 
@@ -70,6 +86,10 @@ SEMANTIC_RULES = """질문 유형별로 쓸 곳 (반드시 따른다)
 - 특정 날짜의 라운드 → fact_video.shot_at LIKE 'YYYY-MM-DD%'
 - '각각', 'A와 B의 ~' → 그룹마다 한 행이 나오도록 GROUP BY 하고 그룹을 구분하는 열도 함께 SELECT
 - 클럽은 club_group('driver','iron') 을 우선 쓴다. 웨지·우드·퍼터를 물을 때만 club 을 쓴다.
+- '타수', '벌타', '퍼트', '파3/4/5', '홀', '라운드 점수' → 골프존 라운드 기록 (fact_round, fact_hole, par_type_summary).
+  샷 영상(fact_video)이 아니다. 여러 라운드 합계는 fact_hole 에서 직접 sum/avg 한다.
+- '몇 m에서', '거리별', '그린 적중' → lakehouse.gold.shot_outcome_by_distance 또는 fact_hole_shot
+- '드라이버가 왼쪽/오른쪽', '좌우 분산' → lakehouse.gold.driver_dispersion
 
 예시
 Q: 아이언 훅 비율은?

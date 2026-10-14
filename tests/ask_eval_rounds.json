@@ -1,0 +1,18 @@
+[
+  {"q": "최근 라운드들에서 벌타를 모두 몇 타 받았어?",
+   "sql": "SELECT sum(penalties) FROM lakehouse.silver.fact_hole"},
+  {"q": "파5 홀 평균 타수는?",
+   "sql": "SELECT avg(strokes) FROM lakehouse.silver.fact_hole WHERE par = 5"},
+  {"q": "가장 잘 친 라운드의 총 타수는?",
+   "sql": "SELECT min(strokes) FROM lakehouse.silver.fact_round"},
+  {"q": "130~160m 남은 샷의 그린 적중률은?",
+   "sql": "SELECT sum(green_rate * shots) / sum(shots) FROM lakehouse.gold.shot_outcome_by_distance WHERE distance_bucket = '130-160'"},
+  {"q": "OB가 난 샷은 몇 번이야?",
+   "sql": "SELECT count(*) FROM lakehouse.silver.fact_hole_shot WHERE lie = 'OB'"},
+  {"q": "3퍼트 이상 한 홀은 몇 개야?",
+   "sql": "SELECT count(*) FROM lakehouse.silver.fact_hole WHERE putts >= 3"},
+  {"q": "드라이버 페어웨이 안착률이 가장 높았던 라운드 날짜는?",
+   "sql": "SELECT substr(played_at, 1, 10) FROM lakehouse.gold.driver_dispersion ORDER BY fairway_rate DESC LIMIT 1"},
+  {"q": "라운드 평균 퍼트 수는?",
+   "sql": "SELECT avg(putts) FROM lakehouse.silver.fact_round"}
+]

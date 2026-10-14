@@ -42,7 +42,20 @@ def lakehouse() -> dict:
                          FROM lakehouse.ops.pipeline_runs ORDER BY finished_at DESC LIMIT 1""")
     for f in fixes:
         f["name"] = BY_KEY[f["fix_key"]].name if f["fix_key"] in BY_KEY else "지적 없음"
-    return {"trend": trend, "fixes": fixes, "rounds": rounds, "last_run": runs[0] if runs else None}
+    # Golfzon round records (ADR 007): where strokes go, and what happens from each distance.
+    by_par = _rows(cur, """SELECT par, sum(holes) AS holes, sum(avg_strokes * holes) / sum(holes) AS avg_strokes,
+                                  sum(strokes_over_par) AS over_par, sum(penalty_strokes) AS penalties,
+                                  sum(gir_rate * holes) / sum(holes) AS gir_rate, count(DISTINCT pg_code) AS rounds
+                           FROM lakehouse.gold.par_type_summary GROUP BY par ORDER BY par""")
+    by_distance = _rows(cur, """SELECT distance_bucket, sum(shots) AS shots,
+                                       sum(green_rate * shots) / sum(shots) AS green_rate,
+                                       sum(penalty_rate * shots) / sum(shots) AS penalty_rate
+                                FROM lakehouse.gold.shot_outcome_by_distance
+                                WHERE start_lie_group <> 'tee' GROUP BY distance_bucket ORDER BY distance_bucket""")
+    drives = _rows(cur, """SELECT played_at, drives, mean_x_m, sd_x_m, fairway_rate, penalty_rate
+                           FROM lakehouse.gold.driver_dispersion ORDER BY played_at DESC""")
+    return {"trend": trend, "fixes": fixes, "rounds": rounds, "last_run": runs[0] if runs else None,
+            "by_par": by_par, "by_distance": by_distance, "drives": drives}
 
 
 def findings(store) -> list[dict]:

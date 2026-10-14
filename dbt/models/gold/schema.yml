@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: round_summary
+    description: One row per round (session) and club group.
+    columns:
+      - name: session_key
+        data_tests: [not_null]
+      - name: club_group
+        data_tests:
+          - accepted_values:
+              arguments: {values: ["driver", "iron"]}
+      - name: shots
+        data_tests: [not_null]
+
+  - name: metric_by_flight
+    description: Median and mean of each face-on metric per club group and ball flight.
+    columns:
+      - name: metric
+        data_tests: [not_null]
+
+  - name: fix_frequency
+    description: Share of cards whose headline fix is each fault, per club group.
+    columns:
+      - name: fix_key
+        data_tests: [not_null]
+
+  - name: monthly_trend
+    description: Monthly straight rate, pelvis sway and tempo per club group.
+    columns:
+      - name: month
+        data_tests: [not_null]
+
+  - name: par_type_summary
+    description: Per round and par - strokes over par, penalty strokes, putts, GIR and fairway rates.
+    columns:
+      - name: par
+        data_tests: [not_null]
+
+  - name: shot_outcome_by_distance
+    description: Full shots by distance-to-hole bucket and starting lie - green rate, penalty rate.
+    columns:
+      - name: distance_bucket
+        data_tests: [not_null]
+
+  - name: driver_dispersion
+    description: Per round driver landing spread (x + right), fairway and penalty rates, left/right misses.
+    columns:
+      - name: pg_code
+        data_tests: [unique, not_null]
+
+  - name: swing_vs_hole
+    description: Driver swing video + textbook verdict joined to the tee-shot result and hole score.
+    columns:
+      - name: video_id
+        data_tests: [unique, not_null]

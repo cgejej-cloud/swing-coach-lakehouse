@@ -1,0 +1,73 @@
+version: 2
+
+sources:
+  - name: silver
+    database: lakehouse
+    schema: silver
+    description: Iceberg silver tables, kept current by the CDC stream (pipeline/stream.py) and reconciled by the batch run.
+    tables:
+      - name: fact_video
+        columns:
+          - name: video_id
+            data_tests: [unique, not_null]
+          - name: ball_flight_code
+            data_tests:
+              - accepted_values:
+                  arguments: {values: [0, 1, 2, 3], quote: false}
+                  config: {where: "ball_flight_code IS NOT NULL"}
+      - name: fact_swing
+        columns:
+          - name: video_id
+            data_tests:
+              - unique
+              - not_null
+              - relationships:
+                  arguments: {to: "source('silver', 'fact_video')", field: video_id}
+      - name: fact_card
+        columns:
+          - name: video_id
+            data_tests:
+              - unique
+              - relationships:
+                  arguments: {to: "source('silver', 'fact_video')", field: video_id}
+      - name: dim_reference
+        columns:
+          - name: club_group
+            data_tests:
+              - unique
+              - accepted_values:
+                  arguments: {values: ["driver", "iron"]}
+      # Golfzon round records (ADR 007): loaded from round files by the batch run, not by CDC.
+      - name: fact_round
+        columns:
+          - name: pg_code
+            data_tests: [unique, not_null]
+          - name: holes
+            data_tests:
+              - accepted_values:
+                  arguments: {values: [9, 18], quote: false}
+      - name: fact_hole
+        columns:
+          - name: pg_code
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments: {to: "source('silver', 'fact_round')", field: pg_code}
+          - name: par
+            data_tests:
+              - accepted_values:
+                  arguments: {values: [3, 4, 5, 6], quote: false}
+      - name: fact_hole_shot
+        columns:
+          - name: lie_code
+            data_tests: [not_null]
+          - name: pg_code
+            data_tests:
+              - relationships:
+                  arguments: {to: "source('silver', 'fact_round')", field: pg_code}
+      - name: fact_driver_landing
+        columns:
+          - name: attr
+            data_tests:
+              - accepted_values:
+                  arguments: {values: [0, 1, 2, 3, 4, 5], quote: false}

@@ -246,6 +246,23 @@ function lineChart(trend, key, label, fmt) {
     <p class="legend"><span style="color:var(--accent)">●</span> 드라이버 · <span style="color:var(--fix)">●</span> 아이언</p>`;
 }
 
+function roundPanel(d) {
+  if (!d.by_par || !d.by_par.length) return "";
+  const n = Math.max(...d.by_par.map(p => p.rounds));
+  const par = d.by_par.map(p => `<tr><td>파${p.par}</td><td>${p.holes}</td><td>${p.avg_strokes.toFixed(2)}</td>
+      <td>+${p.over_par}</td><td>${p.penalties}</td><td>${pct(p.gir_rate)}</td></tr>`).join("");
+  const dist = d.by_distance.map(b => `<tr><td>${esc(b.distance_bucket.replace(/\b0+(\d)/g, "$1"))}m</td><td>${b.shots}</td>
+      <td>${pct(b.green_rate)}</td><td>${pct(b.penalty_rate)}</td></tr>`).join("");
+  const drv = d.drives.map(r => `<tr><td>${esc((r.played_at || "").slice(5, 10))}</td><td>${r.mean_x_m < 0 ? "왼쪽" : "오른쪽"} ${Math.abs(r.mean_x_m).toFixed(0)}m</td>
+      <td>±${r.sd_x_m.toFixed(0)}m</td><td>${pct(r.fairway_rate)}</td><td>${pct(r.penalty_rate)}</td></tr>`).join("");
+  return `<div class="panel"><h3>타수는 어디서 잃나 (최근 ${n}라운드)</h3>
+      <table><tr><th>홀</th><th>홀 수</th><th>평균</th><th>오버</th><th>벌타</th><th>그린 적중</th></tr>${par}</table></div>
+    <div class="panel"><h3>남은 거리별 결과 (티샷 제외)</h3>
+      <table><tr><th>남은 거리</th><th>샷</th><th>그린에</th><th>벌타 구역</th></tr>${dist}</table></div>
+    <div class="panel"><h3>드라이버 좌우 분산</h3>
+      <table><tr><th>날짜</th><th>평균</th><th>퍼짐</th><th>페어웨이</th><th>OB·패널티</th></tr>${drv}</table></div>`;
+}
+
 async function loadInsights() {
   const box = document.getElementById("insights");
   const d = await (await fetch("/api/insights")).json();
@@ -263,6 +280,7 @@ async function loadInsights() {
         ${lineChart(d.trend, "median_pelvis_sway_top_sw", "백스윙 골반 이동 (0에 가까울수록 제자리)", v => v.toFixed(2))}</div>
       <div class="panel"><h3>자주 나온 지적</h3><p class="muted">드라이버</p><div class="bars">${bars("driver")}</div>
         <p class="muted">아이언</p><div class="bars">${bars("iron")}</div></div>
+      ${roundPanel(d)}
       <div class="panel"><h3>최근 라운드</h3><table><tr><th>라운드</th><th>클럽</th><th>샷</th><th>스트레이트</th><th>평균 캐리</th></tr>${rounds}</table></div>
       <div class="panel"><h3>데이터</h3><p class="muted">${run}${d.sync.running ? " · 지금 동기화 중…" : ""}</p>
         <button class="btn" id="sync">지금 동기화</button></div>`;

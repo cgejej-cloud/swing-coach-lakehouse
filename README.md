@@ -26,7 +26,8 @@ flowchart LR
     KF --> ST[스트림 소비자<br/>마이크로배치 · 키별 최신 상태]
     ST --> S[(Iceberg silver<br/>행 해시 MERGE / DELETE)]
     L[(SeaweedFS S3<br/>raw/landing · raw/cdc)] --- S
-    S --> DBT[dbt<br/>gold 4개 + 테스트 19개]
+    GZ[골프존 라운드 파일<br/>홀·샷·드라이버 낙하] --> L
+    S --> DBT[dbt<br/>gold 8개 + 테스트]
     DBT --> G[(Iceberg gold)]
     AF[Airflow 야간<br/>대조 · dbt 원천 테스트 · 유지보수] --> S
     LK[Lakekeeper REST 카탈로그] --- S
@@ -54,9 +55,11 @@ flowchart LR
 | 정석 기준 판정 | 드라이버 스트레이트 비율 잘함 67% · 보통 61% · 아쉬움 39% (방향 일치, 유의하지 않음 p=0.25), 아이언은 관계 없음 | 골프존 구질 169샷 `scripts/eval_rubric.py` |
 | 구질 연관 | 드라이버 슬라이스 ↔ 백스윙 골반 밀림 (효과 크기 −1.1, p=0.004) 외 4개 | Mann-Whitney U |
 | 카드 문장 다듬기 (LLM) | 30장 중 25장 채택 (83%), 거절 5장은 규칙 문장 유지 | `scripts/eval_polish.py` |
-| 내 데이터에 묻기 (text-to-SQL) | 실행 정확도 8/15 (스키마만) → 12/15 (의미 규칙), seed 고정 3회 모두 12/15 · 질문당 1.5초 · DELETE 요청 3회 모두 차단 | `scripts/eval_ask.py --repeat 3` |
+| 내 데이터에 묻기 (text-to-SQL) | 실행 정확도 8/15 (스키마만) → 12/15 (의미 규칙), 라운드 테이블 추가 후 11/15 · 처음 보는 라운드 질문 4/8 · seed 고정 3회 반복 · DELETE 요청 3회 모두 차단 | `scripts/eval_ask.py --repeat 3 [--cases ask_eval_rounds.json]` |
+| 라운드·홀·샷 기록 | 최근 10라운드: 홀 180 · 샷 864. 벌타 이동 행 = 스코어카드 벌타 180/180홀, 샷 목록 = 타수 179/180홀 | `pipeline/golfzon.py`, 품질 검사 · dbt 테스트 |
+| 타수는 어디서 잃나 | 파5 홀당 +1.21(벌타 10) · 파4 +0.77 · 파3 +0.46. 남은 거리 130~160m 그린 27%, 190~220m 7%(벌타 13%) | gold `par_type_summary`, `shot_outcome_by_distance` |
 | 데이터 품질 | 파이프라인 검사 23개 + dbt 테스트 19개 (gold) / 10개 (원천) | `lakehouse.ops.dq_results`, `dbt build` |
-| 단위 테스트 | 31 / 31 | `pytest` |
+| 단위 테스트 | 38 / 38 | `pytest` |
 
 ## 설계 판단 (ADR)
 
@@ -66,6 +69,7 @@ flowchart LR
 - **[004 CDC 스트림 · dbt · Airflow](docs/adr/004-cdc-stream-dbt-airflow.md)** — 배치와 같은 변환 코드를 쓰는 직접 만든 소비자, 레이크 커밋 후 오프셋 커밋, 배치는 야간 대조로 역할 변경.
 - **[005 로컬 LLM](docs/adr/005-local-llm-guarded.md)** — LLM은 말투만, 진단은 규칙. 숫자는 맞는데 일본어였던 출력, 비교 기준이 빠진 문장, 규칙을 더하자 떨어진 정확도, 같은 프롬프트에서 흔들린 점수.
 - **[006 정석 기준 판정](docs/adr/006-textbook-verdict.md)** — 연구·투어 측정치로 만든 범위로 핵심 지표만 판정, 2D에서 편향되는 지표는 참고만. 판정을 내 데이터에 맞춰 조정하지 않은 이유.
+- **[007 라운드 · 홀 · 샷 데이터](docs/adr/007-round-hole-shot-data.md)** — 문서 없는 샷 목록을 읽는 규칙(벌타 이동 행)을 스코어카드로 검증, 로그인 정보를 다루지 않는 수집, 원본 JSON 보관 후 재처리.
 - 측정할 수 없는 것은 말하지 않는다 — 정면 카메라에서 왜곡되는 탑 왼팔 각도는 지표에서 제외, 신뢰도 낮은 스윙은 지적 생략.
 
 ## 구조
@@ -73,8 +77,8 @@ flowchart LR
 ```
 src/swing_coach/   video · pose · phases · metrics · club · baseline · coach · render · store(Postgres/SQLite) · engine · rubric(정석 판정) · insights · llm · ask · app
 web/               PWA (피드 · 누적 분석 · 내 데이터에 묻기)
-pipeline/          extract · transform(MERGE) · quality · run(배치 대조) · stream(CDC 소비자)
-dbt/               gold 모델 4개, 원천·gold 테스트
+pipeline/          golfzon(라운드 파일 → 테이블) · extract · transform(MERGE) · quality · run(배치 대조) · stream(CDC 소비자)
+dbt/               gold 모델 8개, 원천·gold 테스트
 orchestration/     Airflow DAG (대조 → dbt 원천 테스트 → Iceberg 유지보수)
 platform/          docker-compose (Postgres, SeaweedFS, Lakekeeper, Trino, Kafka, Debezium, Airflow), 부트스트랩
 scripts/           포즈 추출 · 피드 적재 · 모델 학습 · 구간 평가/튜닝 · LLM·판정 평가 · 자동 시작 · 라벨링 도구
@@ -110,8 +114,8 @@ uv run --no-sync pytest
 | 계층 | 테이블 |
 |---|---|
 | raw.landing / raw.cdc | 배치 스냅샷 / CDC 마이크로배치 parquet (외부 테이블) |
-| lakehouse.silver | fact_video, fact_swing, fact_card, dim_reference, fact_pose_frame |
-| lakehouse.gold (dbt) | round_summary, metric_by_flight, fix_frequency, monthly_trend |
+| lakehouse.silver | fact_video, fact_swing, fact_card, dim_reference, fact_pose_frame, fact_round, fact_hole, fact_hole_shot, fact_driver_landing |
+| lakehouse.gold (dbt) | round_summary, metric_by_flight, fix_frequency, monthly_trend, par_type_summary, shot_outcome_by_distance, driver_dispersion, swing_vs_hole |
 | lakehouse.ops | pipeline_runs, dq_results, stream_batches |
 
 ## 데이터 정책

@@ -16,7 +16,8 @@ from airflow.sdk import DAG
 PY = "/home/airflow/pipeline-venv/bin/python"
 DBT = "/home/airflow/pipeline-venv/bin/dbt"
 PROJECT = "/opt/swingcoach"
-SILVER = ["fact_video", "fact_swing", "fact_card", "dim_reference", "fact_pose_frame"]
+SILVER = ["fact_video", "fact_swing", "fact_card", "dim_reference", "fact_pose_frame",
+          "fact_round", "fact_hole", "fact_hole_shot", "fact_driver_landing"]
 
 MAINTAIN = """{py} - <<'EOF'
 import sys; sys.path.insert(0, "{project}/pipeline")

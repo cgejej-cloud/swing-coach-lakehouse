@@ -52,9 +52,10 @@ def main() -> None:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--repeat", type=int, default=3, help="runs; LLM output varies run to run")
+    ap.add_argument("--cases", default="ask_eval.json", help="file in tests/ (ask_eval_rounds.json: round records)")
     args = ap.parse_args()
     run = trino_runner()
-    cases = json.loads((ROOT / "tests" / "ask_eval.json").read_text(encoding="utf-8"))
+    cases = json.loads((ROOT / "tests" / args.cases).read_text(encoding="utf-8"))
     t0 = time.time()
     scores = [run_once(run, cases, verbose=(i == 0)) for i in range(args.repeat)]
     n = len(cases)

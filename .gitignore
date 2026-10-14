@@ -1,10 +1,11 @@
 .venv/
 __pycache__/
 *.pyc
-nasmo/
-data/
-models/
-label/
+/nasmo/
+/data/
+# Root only: a bare "models/" also hid dbt/models/ from git.
+/models/
+/label/
 platform/.env
 platform/seaweedfs/s3.json
 # Screenshots with people in them stay local.

@@ -15,6 +15,8 @@ VALUE_COLUMNS = {
     "fact_video": ["carry_m", "ball_flight_code"],
     "fact_swing": ["m_tempo_ratio", "m_head_sway_top_sw", "m_pelvis_sway_top_sw", "m_pelvis_shift_imp_sw"],
     "fact_pose_frame": ["x", "y"],
+    "fact_hole": ["strokes", "putts"],
+    "fact_hole_shot": ["distance_m", "end_remain_m"],
 }
 
 
@@ -54,6 +56,15 @@ def checks(t: Trino) -> list[tuple[str, str, bool, str]]:
 
     neg_carry = t.scalar("SELECT count(*) FROM lakehouse.silver.fact_video WHERE carry_m < 0")
     out.append(("fact_video", "carry_non_negative", neg_carry == 0, f"negative={neg_carry}"))
+
+    # Golfzon rounds: the scorecard is the source of truth for strokes; the hole-detail shot
+    # list is checked against it. Penalty relocations should equal scorecard penalties.
+    putts = t.scalar("SELECT count(*) FROM lakehouse.silver.fact_hole WHERE putts > strokes OR strokes < 1")
+    out.append(("fact_hole", "putts_within_strokes", putts == 0, f"violations={putts}"))
+    reloc = t.scalar("""SELECT count(*) FROM lakehouse.silver.fact_hole WHERE relocations <> penalties""")
+    out.append(("fact_hole", "warn:relocations_match_penalties", reloc == 0, f"holes={reloc}"))
+    listed = t.scalar("SELECT count(*) FROM lakehouse.silver.fact_hole WHERE strokes - shot_rows NOT IN (0, 1)")
+    out.append(("fact_hole", "warn:shot_list_matches_strokes", listed == 0, f"holes={listed}"))
     return out
 
 

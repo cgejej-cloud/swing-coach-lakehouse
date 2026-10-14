@@ -1,4 +1,4 @@
-"""Batch extract: app DB tables and pose files -> S3 landing zone as parquet.
+"""Batch extract: app DB tables, pose files and Golfzon round files -> S3 landing zone as parquet.
 
 Every run writes a full snapshot to   landing/<table>/latest/   (what Trino reads)
 and keeps a copy under                landing/<table>/dt=<run date>/   (replay / audit).
@@ -17,6 +17,7 @@ import pandas as pd
 import pyarrow as pa
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import golfzon  # noqa: E402
 from lake import LANDING, ROOT, clear_prefix, put_parquet, s3  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "src"))
@@ -40,6 +41,8 @@ INT_COLUMNS = {
 FLOAT_COLUMNS = {
     "videos": ["club_conf", "carry_m", "fps"],
 }
+INT_COLUMNS |= golfzon.INT_COLUMNS
+FLOAT_COLUMNS |= golfzon.FLOAT_COLUMNS
 
 
 def shape(name: str, df: pd.DataFrame) -> pd.DataFrame:
@@ -95,6 +98,7 @@ def main(only: list[str] | None = None) -> dict[str, int]:
     run_dt = datetime.now().strftime("%Y-%m-%d")
     tables = read_app_tables()
     tables["pose_frame"] = read_pose_frames(tables["videos"])
+    tables |= golfzon.tables()  # round / hole / shot records from the Golfzon round files
     counts = {}
     for name, df in tables.items():
         if only and name not in only:

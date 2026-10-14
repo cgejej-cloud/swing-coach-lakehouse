@@ -22,6 +22,11 @@ SILVER = {
     "fact_card": ("cards", ["video_id"], []),
     "dim_reference": ("reference", ["club_group"], []),
     "fact_pose_frame": ("pose_frame", ["video_id", "frame", "lm"], ["bucket(video_id, 8)"]),
+    # Golfzon round records (ADR 007)
+    "fact_round": ("golfzon_round", ["pg_code"], []),
+    "fact_hole": ("golfzon_hole", ["pg_code", "hole_no"], []),
+    "fact_hole_shot": ("golfzon_shot", ["pg_code", "hole_no", "shot_no"], []),
+    "fact_driver_landing": ("golfzon_driver_landing", ["pg_code", "hole_no"], []),
 }
 
 
@@ -123,7 +128,8 @@ def _rebuild_if_type_changed(t: Trino, fq: str, table: str) -> bool:
 
 
 DBT_DIR = Path(__file__).resolve().parents[1] / "dbt"
-GOLD_MODELS = ["round_summary", "metric_by_flight", "fix_frequency", "monthly_trend"]
+GOLD_MODELS = ["round_summary", "metric_by_flight", "fix_frequency", "monthly_trend",
+               "par_type_summary", "shot_outcome_by_distance", "driver_dispersion", "swing_vs_hole"]
 
 
 class GoldBuildError(RuntimeError):
