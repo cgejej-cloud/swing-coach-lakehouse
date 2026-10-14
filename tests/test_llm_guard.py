@@ -29,3 +29,9 @@ def test_dropping_the_comparison_baseline_is_rejected():
 
 def test_runaway_length_is_rejected():
     assert _check("템포가 좋아요 (3.1:1)", "템포 3.1:1 " + "아주 좋아요 " * 20) == "too long"
+
+
+def test_adding_a_different_comparison_baseline_is_rejected():
+    original = "백스윙이 느리거나 탑에서 멈칫해요 (4.1:1, 정석 2.7~3.3:1)"
+    rewritten = "탑에서 기준 스윙보다 4.1:1로 멈칫해요 (정석 2.7~3.3:1)."
+    assert "added" in _check(original, rewritten)

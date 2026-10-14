@@ -8,7 +8,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from swing_coach import baseline, llm
+from swing_coach import baseline, llm, rubric
 from swing_coach.club import address_crop, address_embedding, embed
 from swing_coach.coach import BY_KEY, Card, make_card
 from swing_coach.metrics import compute, fix_sides
@@ -151,6 +151,8 @@ def make_card_for(store: Store, v, ctx: Context) -> None:
     recent = [fixes.get(i) for i in prior.video_id.tail(2)]
 
     card = make_card(row, good, reference, ctx.links.get(group, {}), recent)
+    # Judge against textbook fundamentals; this replaces the fix chosen against own shots.
+    rubric.apply_to_card(card, row, group, ctx.links.get(group, {}), recent)
     if card.fix and llm.available():
         # Rules choose the content; the LLM may only reword it (guarded in llm.polish_card).
         _, card.evidence["_llm"] = llm.polish_card(card)

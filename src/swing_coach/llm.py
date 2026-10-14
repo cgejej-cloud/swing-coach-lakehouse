@@ -56,7 +56,7 @@ POLISH_SYSTEM = """너는 스크린골프 연습장에서 옆에 서 있는 친�
 반드시 지킬 것:
 - 출력은 반드시 한국어(한글)로만 쓴다. 일본어·중국어·영어 문장은 절대 쓰지 않는다.
 - 숫자와 단위(공 N개, N:1, N° 등)는 하나도 바꾸거나 빼거나 새로 만들지 않는다.
-- '기준 스윙보다', '평소 좋은 샷과' 같은 비교 기준 표현은 원문 그대로 남긴다. 숫자가 무엇과 비교한 값인지 사라지면 안 된다.
+- '기준 스윙보다', '평소 좋은 샷과', '정석 범위' 같은 비교 기준 표현은 원문 그대로 남긴다. 숫자가 무엇과 비교한 값인지 사라지면 안 된다.
 - 새로운 진단, 원인, 부상·건강 이야기, 장비 이야기를 추가하지 않는다.
 - 각 문장은 원문 길이의 1.5배를 넘지 않는다. 존댓말 한두 문장. 이모지는 넣지 않는다.
 
@@ -66,7 +66,7 @@ POLISH_SYSTEM = """너는 스크린골프 연습장에서 옆에 서 있는 친�
 입력: {"good": "임팩트 때 왼다리가 잘 버텨요 (평소 좋은 샷과 같아요)", "fix": "탑에서 머리가 오른쪽으로 밀렸어요 (기준 스윙보다 공 3개 정도)", "cue": "다음 샷: \\"머리는 공 뒤에 두고 어깨만 돌리기\\""}
 출력: {"good": "임팩트 때 왼다리가 평소 좋은 샷과 똑같이 잘 버텨 줬어요.", "fix": "탑에서 머리가 기준 스윙보다 공 3개 정도 오른쪽으로 밀렸어요.", "cue": "다음 샷은 머리를 공 뒤에 두고 어깨만 돌려 보세요."}"""
 
-KEEP_PHRASES = ["기준 스윙", "평소 좋은 샷"]
+KEEP_PHRASES = ["기준 스윙", "평소 좋은 샷", "정석"]
 NON_KOREAN_CJK = re.compile(r"[぀-ヿ一-鿿]")  # kana and CJK ideographs
 HANGUL = re.compile(r"[가-힣]")
 
@@ -93,6 +93,9 @@ def _check(original: str, rewritten: str) -> str | None:
     for anchor in KEEP_PHRASES:
         if anchor in original and anchor not in rewritten:
             return f"dropped '{anchor}'"
+        # Adding one is as bad: "4.1:1 (정석 2.7~3.3)" became "기준 스윙보다 4.1:1".
+        if anchor not in original and anchor in rewritten:
+            return f"added '{anchor}'"
     if len(rewritten) > 1.6 * len(original) + 10:
         return "too long"
     return None

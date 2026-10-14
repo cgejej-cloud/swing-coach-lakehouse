@@ -64,6 +64,10 @@
   svg.chart { width: 100%; height: auto; display: block; }
   svg.chart text { fill: var(--muted); font-size: 11px; }
   .muted { color: var(--muted); font-size: 13px; }
+  .verdict { border-radius: 999px; padding: 1px 9px; font-weight: 600; color: #fff; }
+  .v-good { background: var(--good); } .v-ok { background: #a16207; } .v-poor { background: var(--fix); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+  .s-green { background: var(--good); } .s-amber { background: #ca8a04; } .s-red { background: var(--fix); }
   .ask { display: flex; gap: 8px; }
   .ask input { flex: 1; min-width: 0; font: inherit; padding: 7px 12px; border: 1px solid var(--line);
                border-radius: 999px; background: var(--bg); color: var(--fg); }
@@ -91,12 +95,15 @@ const pending = new Set();
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 
+const VERDICT = {"잘함": "good", "보통": "ok", "아쉬움": "poor"};
 function cardHtml(c) {
   if (c.status !== "done") {
     if (c.status !== "failed") pending.add(c.video_id);
     const msg = c.status === "failed" ? `분석 실패: ${esc(c.error)}` : "분석 중이에요…";
     return `<article class="card" id="v${c.video_id}"><div class="pending">#${c.seq_no} · ${msg}</div></article>`;
   }
+  const verdict = c.verdict && c.verdict !== "판정 보류"
+    ? `<span class="verdict v-${VERDICT[c.verdict]}">정석 기준 ${esc(c.verdict)}</span>` : "";
   const chips = [`#${c.seq_no}`, c.title, c.club_predicted ? "클럽 자동 판별" : null,
                  c.club_uncertain ? "클럽 판별 보류" : null,
                  c.confidence && c.confidence !== "-" ? `분석 신뢰도 ${c.confidence}` : null,
@@ -104,7 +111,7 @@ function cardHtml(c) {
   return `<article class="card" id="v${c.video_id}">
     ${c.image ? `<img loading="lazy" src="${c.image}" alt="스윙 키프레임 P1 P4 P7 P10">` : ""}
     <div class="body">
-      <div class="meta">${chips.map(t => `<span class="chip">${esc(t)}</span>`).join("")}</div>
+      <div class="meta">${verdict}${chips.map(t => `<span class="chip">${esc(t)}</span>`).join("")}</div>
       ${c.good ? `<div class="good">${esc(c.good)}</div>` : ""}
       ${c.fix ? `<div class="fix">${esc(c.fix)}</div>` : ""}
       ${c.cue ? `<div class="cue">${esc(c.cue)}</div>` : ""}
@@ -136,10 +143,12 @@ feedEl.addEventListener("click", async ev => {
     const box = document.getElementById("d" + d.detail);
     if (!box.hidden) { box.hidden = true; return; }
     const r = await (await fetch(`/api/cards/${d.detail}`)).json();
-    box.innerHTML = `<table><tr><th>구간</th><th>지표</th><th>이번</th><th>평소 좋은 샷</th><th>차이(z)</th></tr>` +
-      r.metrics.map(m => `<tr class="${m.is_fix ? "hl-fix" : m.is_good ? "hl-good" : ""}"><td>${esc(m.phase)}</td><td>${esc(m.name)}</td>` +
-        `<td>${m.value.toFixed(2)}</td><td>${m.good_median.toFixed(2)}</td><td>${m.z.toFixed(1)}</td></tr>`).join("") +
-      `</table><p class="legend">정면 영상으로 측정 불가: ${r.not_measurable.join(", ")}</p>`;
+    const tb = t => t ? `<span class="dot s-${t.status}"></span>${t.good.map(v => +v.toFixed(2)).join("~")}${t.core ? "" : " *"}` : "-";
+    box.innerHTML = `<table><tr><th>구간</th><th>지표</th><th>이번</th><th>정석 범위</th><th>평소 좋은 샷</th></tr>` +
+      r.metrics.map(m => `<tr class="${m.is_fix ? "hl-fix" : m.is_good ? "hl-good" : ""}" title="${esc(m.source || "")}"><td>${esc(m.phase)}</td><td>${esc(m.name)}</td>` +
+        `<td>${m.value.toFixed(2)}</td><td>${tb(m.textbook)}</td><td>${m.good_median.toFixed(2)}</td></tr>`).join("") +
+      `</table><p class="legend">* 참고 지표(판정에 미반영) · 단위: 어깨너비, 각도(°), 템포 비율 · 출처는 행을 길게 누르면 보여요</p>` +
+      `<p class="legend">정면 영상으로 측정 불가: ${r.not_measurable.join(", ")}</p>`;
     box.hidden = false;
   }
   if (d.ref) {

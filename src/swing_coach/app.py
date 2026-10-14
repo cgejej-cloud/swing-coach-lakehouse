@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from swing_coach import engine, insights
+from swing_coach import engine, insights, rubric
 from swing_coach.coach import BY_KEY
 from swing_coach.store import Store, default_store
 
@@ -212,6 +212,7 @@ def _card_json(r) -> dict:
         "club_uncertain": r["club_source"] == "uncertain",
         "good": r["good"], "fix": r["fix"], "cue": r["cue"],
         "extra": json.loads(r["extra_json"] or "[]"), "confidence": r["confidence"],
+        "verdict": json.loads(r["evidence_json"] or "{}").get("_verdict", {}).get("level"),
         "image": f"/media/{Path(r['image_path']).relative_to('data').as_posix()}" if r["image_path"] else None,
         "is_reference": bool(r["is_ref"]),
     }
@@ -228,7 +229,7 @@ def feed(limit_sessions: int = 10, before: str | None = None):
         out = []
         for s in sessions:
             rows = c.execute("""
-                SELECT v.*, c.good, c.fix, c.cue, c.extra_json, c.confidence, c.image_path,
+                SELECT v.*, c.good, c.fix, c.cue, c.extra_json, c.confidence, c.image_path, c.evidence_json,
                        EXISTS(SELECT 1 FROM reference r WHERE r.video_id = v.id) AS is_ref
                 FROM videos v LEFT JOIN cards c ON c.video_id = v.id
                 WHERE v.session_key = ? ORDER BY v.seq_no""", (s["session_key"],)).fetchall()
@@ -244,10 +245,14 @@ def card_detail(video_id: int):
     if not r:
         raise HTTPException(404)
     ev = json.loads(r["evidence_json"] or "{}")
+    verdict = ev.get("_verdict", {})
+    textbook = verdict.get("checks", {})
     rows = [{"key": k, "name": BY_KEY[k].name, "phase": BY_KEY[k].phase, **v,
+             "textbook": textbook.get(k), "source": rubric.BY_RULE[k].source if k in rubric.BY_RULE else None,
              "is_fix": k == r["fix_key"], "is_good": k == r["good_key"]}
             for k, v in ev.items() if k in BY_KEY]  # "_llm" etc. are notes, not metrics
-    return {"metrics": rows, "not_measurable": ["스윙 플레인", "클럽 궤도·페이스", "척추각 유지"],
+    return {"metrics": rows, "verdict": verdict.get("level"),
+            "not_measurable": ["몸통 회전량", "얼리 익스텐션", "스윙 플레인", "클럽 궤도·페이스", "손목 모양"],
             "wording": ev.get("_llm", "rules")}
 
 
