@@ -117,7 +117,9 @@ class Store:
             import psycopg
             from psycopg.rows import dict_row
 
-            raw = psycopg.connect(self.target, row_factory=dict_row)
+            # Without a timeout, connecting while WSL's port relay is up but Postgres is not
+            # yet hangs forever (seen at Windows logon), so fail fast and let the caller retry.
+            raw = psycopg.connect(self.target, row_factory=dict_row, connect_timeout=10)
         else:
             raw = sqlite3.connect(self.target, timeout=30)
             raw.row_factory = sqlite3.Row
